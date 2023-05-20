@@ -1,0 +1,241 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: Kafr El-Sheikh Univesity
+// Engineer: Mostafa Nour Elden
+// 
+// Create Date: 20 may 2023
+// Design Name: Nono Basic Computer
+// Module Name: my_computer
+// Project Name: Nono Basic Computer
+// Target Devices: Microprocessor 
+// Tool Versions: Vivado
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
+
+module BasicComputer(IR,DR,AC,PC,AR,clk,SC,OUTR,INPR);
+
+input clk;
+output reg [7:0] INPR;
+output reg [7:0] OUTR;
+output reg [7:0] IR;
+output reg [7:0] DR;
+output reg [7:0] AC;
+output reg [3:0] PC;
+output reg [3:0] AR;
+reg [7:0] MEM [15:0]; //16 words(you can Change), each 16bit by seleSCtor address 8 bit
+reg I;
+reg E;
+reg S; //start-stop ff
+output reg [3:0] SC; //defined as output to observe it
+ 
+//initialize memory with random words
+initial
+begin
+INPR <= 1;
+OUTR <= 0;
+SC <= 0;
+IR <= 0;
+DR <= 0;
+AC <= 0;
+PC <= 0;
+AR <=0;
+I<=0;
+E<=0;
+S <= 1; //set start flip-flop
+$readmemh("D:/mem_data2.txt", MEM); // memory  reading from text file
+end
+
+always @(posedge clk)
+begin 
+	//fetch cycle start
+	if (SC == 0) begin	//T0
+		AR <= PC;
+		SC <= SC + 1; end
+	
+	else if (SC == 1) begin // T1
+		IR <= MEM[AR[3:0]];
+		PC <= PC + 1;		
+		SC <= SC + 1; end
+	
+	else if (SC == 2) begin //T2
+		AR <= IR[3:0];
+		I <= IR[7];
+		SC <= SC +1; end// T3
+	//fetch cycle end
+	
+	else begin
+		if (IR[6:4] == 3'b111) begin //D7=1 >> reg ref or ip\op
+			
+			if(I == 0) begin// I' Register-reference (end is at )
+				// D7 I' T3
+				if(AR[3:0] == 4'b1000) begin//CLA 0d8
+					AC <= 0;
+					SC <= 0; end
+				else if(AR[3:0] == 4'b0100) begin //CMA 0d4	
+					AC <= ~AC;                              
+					SC <= 0; end
+					
+				else if(AR[3:0] == 4'b0010) begin//CIR 0d2
+					         AC <= (AC >> 1); 
+                             AC[7] <= E;
+                             E <= AC[0];
+                             SC <= 0; end
+
+				else if(AR[3:0] == 4'b0001) begin//CIL 0d1
+					      AC <= (AC << 1);
+                          AC[0] <= E;
+                          E <= AC[7];
+                          SC <= 0; end
+					
+				else if(AR[3:0] == 4'b0011) begin //INC  0d3
+					AC <= AC +1 ;
+					SC <= 0; end
+								
+				else if(AR[3:0]== 4'b0111) begin// HLT 0d7
+					S <= 0;
+					SC <= 0; end
+					
+				else begin //do nothing
+					SC <= 0; end	
+											
+			end
+			if(I == 1) begin // input-output 
+			     if (IR[3] == 1)begin //B3
+			        AC <= INPR; // INP  F
+			         SC <=0;end
+			     else if (IR[2] == 1) begin //B2
+			         OUTR <= AC; // OUT F
+			         SC <=0; end
+			     else begin //do nothing
+                     SC <= 0; end    
+			end
+		end		
+		
+	
+		else begin // Memory reference instructions (end is at 223)
+		
+			if(I == 1) begin// indirect
+				if (SC == 3) begin //T3
+					AR <= MEM[AR[3:0]];  // fech the direct address 
+					SC <= SC + 1; end //T4 
+				else begin // instuctions
+					if(IR[ 6 : 4 ] == 3'b000) begin //  (AND) op code =0
+						if(SC == 4) begin
+							DR <= MEM[AR[3 :0]]; 
+							SC <= SC + 1; end
+						else begin
+							AC <= (AC & DR);
+							SC <= 0; end
+					end
+					else if(IR[ 6 : 4 ] == 3'b001) begin //  (ADD)  op code 1
+						if(SC == 4) begin
+							DR <= MEM[AR[3 :0]]; 
+							SC <= SC + 1; end
+						else begin
+							{E,AC} <= AC + DR;
+							SC <= 0; end
+					end
+					
+					else if(IR[14:12] == 3'b010) begin //LDA OP code 2
+                        if(SC == 4) begin
+                            DR <= MEM[AR[3:0]]; 
+                            SC <= SC + 1; end
+                        else begin
+                            AC <= DR;
+                            SC <= 0; end
+                    end        
+					
+					
+					else if(IR[ 6 : 4 ] == 3'b011) begin//  (STA)  op code 3
+						MEM[AR[3 :0]] <= AC ; 
+						SC <= 0;
+					end
+				
+					else if(IR[ 6 : 4 ] == 3'b100) begin //  (OR) op code 4
+                             if(SC == 4) begin
+                              DR <= MEM[AR[3:0]]; 
+                              SC <= SC + 1; end
+                              else  begin //
+                              AC <= (AC | DR);
+                              SC <= 0; end
+                     end        
+					else if(IR[ 6 : 4 ] == 3'b101) begin //  (XOR) op code 5
+                              if(SC == 4) begin
+                               DR <= MEM[AR[3:0]]; 
+                               SC <= SC + 1; end
+                               else  begin //
+                               AC <= (AC ^ DR);
+                               SC <= 0; end
+                      end        
+					else begin //do nothing          
+                         SC <= 0; end        
+			   end
+			end
+			if(I == 0) begin // direct
+				if (SC == 3) //T3
+					SC <= SC + 1; //do nothing
+				else begin // instuction
+					if(IR[ 6 : 4 ] == 3'b000) begin //  (AND) op code =0
+                    if(SC == 4) begin
+                        DR <= MEM[AR[3 :0]]; 
+                        SC <= SC + 1; end
+                    else begin
+                        AC <= (AC & DR);
+                        SC <= 0; end
+                end
+                else if(IR[ 6 : 4 ] == 3'b001) begin //  (ADD)  op code 1
+                    if(SC == 4) begin
+                        DR <= MEM[AR[3 :0]]; 
+                        SC <= SC + 1; end
+                    else begin
+                        {E,AC} <= AC + DR;
+                        SC <= 0; end
+                end
+                
+                else if(IR[ 6 : 4] == 3'b010) begin //LDA OP Code 2
+                    if(SC == 4) begin
+                        DR <= MEM[AR[3:0]]; 
+                        SC <= SC + 1; end
+                    else begin
+                        AC <= DR;
+                        SC <= 0; end
+                end        
+                
+                
+                else if(IR[ 6 : 4 ] == 3'b011) begin//  (STA)  op code 3
+                    MEM[AR[3 :0]] <= AC ; 
+                    SC <= 0;
+                end
+            
+					else if(IR[ 6 : 4 ] == 3'b100) begin //  (OR) op code 4
+                             if(SC == 4) begin
+                              DR <= MEM[AR[3:0]]; 
+                              SC <= SC + 1; end
+                              else  begin //
+                              AC <= (AC | DR);
+                              SC <= 0; end
+                     end        
+					else if(IR[ 6 : 4 ] == 3'b101) begin //  (XOR) op code 5
+                              if(SC == 4) begin
+                               DR <= MEM[AR[3:0]]; 
+                               SC <= SC + 1; end
+                               else  begin //
+                               AC <= (AC ^ DR);
+                               SC <= 0; end
+                      end        
+                  else begin //do nothing          
+                       SC <= 0; end            
+				end
+			end
+		end 		
+	end 
+end
+endmodule
